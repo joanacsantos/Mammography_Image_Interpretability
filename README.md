@@ -13,3 +13,9 @@ The research study of the article is divided into 3 main parts (illustrated by t
  3. Concept-Based Interpretability Methodology
  4. Human-in-the-loop Approach
 
+This code is adapted from the original implementation of the "Concept Activation Regions: A Generalized Framework For Concept-Based Explanations." [1]
+
+
+
+
+[1] Crabbé, Jonathan, and Mihaela van der Schaar. "Concept Activation Regions: A Generalized Framework For Concept-Based Explanations." Advances in Neural Information Processing Systems.

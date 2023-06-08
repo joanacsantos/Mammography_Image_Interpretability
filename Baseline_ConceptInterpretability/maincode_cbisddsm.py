@@ -51,7 +51,7 @@ from utils.metrics import correlation_matrix
 RESULTS_BASE_PATH = "output/results/"
 MODELS_DIR = "output/models/"
 DATA_SPLIT = [0.7, 0, 0.3]  # Order: Train, Validation, Test. Values between 0 and 1.
-SOURCE = "CBIS_DDSM_100"  
+SOURCE = "cbis_ddsm"  
 
 def write_line_to_csv(dir_path, file, data_row):
 

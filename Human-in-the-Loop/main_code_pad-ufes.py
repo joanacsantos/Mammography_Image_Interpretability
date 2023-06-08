@@ -37,6 +37,7 @@ import textwrap
 
 RESULTS_BASE_PATH = "output/results/"
 MODELS_DIR = "output/models/"
+DATA_SPLIT = [0.7, 0, 0.3]  # Order: Train, Validation, Test. Values between 0 and 1.
 SOURCE = "pad-ufes"  
 
 def write_line_to_csv(dir_path, file, data_row):
@@ -231,7 +232,7 @@ class Classifier(nn.Module):
         train_loader: torch.utils.data.DataLoader,
         #test_loader: torch.utils.data.DataLoader,
         save_dir: pathlib.Path,
-        lr: int = 1e-04,   #1e-04 => Atingue os melhores resultados 1e-5 só apresenta uma ligeira melhoria
+        lr: int = 1e-04,   
         n_epoch: int = 100, #200
         patience: int = 20,
         checkpoint_interval: int = -1,
@@ -380,7 +381,6 @@ for train_index, test_index in skf.split(images, classes):
   print('Accuracy: %.3f' % accuracy_score(classes_test, test_labels))
   print('Precision: %.3f' % precision_score(classes_test, test_labels,average='macro'))
   print('Recall: %.3f' % recall_score(classes_test, test_labels,average='macro')) 
-  print('F1_score: %.3f' % f1_score(classes_test, test_labels,average='macro'))
   
   write_line_to_csv(
       "results/","Test_pad-ufes_10k_bleed.csv",
@@ -388,7 +388,6 @@ for train_index, test_index in skf.split(images, classes):
                 "RUN": (run + 1),
                 "Accuracy": accuracy_score(classes_test, test_labels),
                 "Precision": precision_score(classes_test, test_labels,average='macro'),
-                "Recall": recall_score(classes_test, test_labels,average='macro'),
-                "F1_score": f1_score(classes_test, test_labels,average='macro')
+                "Recall": recall_score(classes_test, test_labels,average='macro')
              })  
   run = run + 1

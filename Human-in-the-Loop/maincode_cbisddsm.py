@@ -38,7 +38,7 @@ import textwrap
 RESULTS_BASE_PATH = "output/results/"
 MODELS_DIR = "output/models/"
 DATA_SPLIT = [0.7, 0, 0.3]  # Order: Train, Validation, Test. Values between 0 and 1.
-SOURCE = "kid2"  
+SOURCE = "cbis_ddsm"  
 
 def write_line_to_csv(dir_path, file, data_row):
 
@@ -62,30 +62,46 @@ def write_line_to_csv(dir_path, file, data_row):
 
     file_csv.flush()
     file_csv.close()
-        
-def pre_datasets(np_images,label,classes): 
-    images = np_images
-
+    
+def pre_datasets(run, np_images,label, classes): 
+    images = np_images.copy()
+    labels_save = label
+    
     #The real classes must also be organized in the specific order
     classes_class = []
-    for k in classes:
-      if (k<=3):
-        classes_class.append(0)
-      elif(k>3):
-        classes_class.append(1)
+    for k in range(0,len(labels_save)):
+        if(labels_save[k] in (classes[(classes['abnormality']=='calcification') & (classes['pathology']=='BENIGN')])['name'].values):
+            classes_class.append(0)
+        elif(labels_save[k] in (classes[ (classes['abnormality']=='calcification') & (classes['pathology']=='MALIGNANT')])['name'].values):
+            classes_class.append(1)
+        elif(labels_save[k] in (classes[ (classes['abnormality']=='mass') & (classes['pathology']=='BENIGN')])['name'].values):
+            classes_class.append(0)
+        elif(labels_save[k] in (classes[ (classes['abnormality']=='mass') & (classes['pathology']=='MALIGNANT')])['name'].values):
+            classes_class.append(1)
 
-    classes1 = classes
+    classes_density = []
+    for k in range(0,len(labels_save)):
+        if(labels_save[k] in (classes[ (classes['density']==0)])['name'].values):
+            classes_density.append(0)
+        elif(labels_save[k] in (classes[ (classes['density']==1)])['name'].values):
+            classes_density.append(1)
+        elif(labels_save[k] in (classes[ (classes['density']==2)])['name'].values):
+            classes_density.append(2)
+        elif(labels_save[k] in (classes[ (classes['density']==3)])['name'].values):
+            classes_density.append(3)
+        elif(labels_save[k] in (classes[ (classes['density']==4)])['name'].values):
+            classes_density.append(4)
     
-    classes_class = np.array(classes_train1); classes1 = np.array(classes1)
+    classes_class = np.array(classes_class); classes_density = np.array(classes_density)
     
-    return(images, classes_class, classes1)  
+    return(images, classes_class, classes_density)  
     
 from torchvision.models import resnet50, ResNet50_Weights
 
-class Classifier(nn.Module):
+class CBIS_DDSM_classifier(nn.Module):
     
     def __init__(self, name: str = "model"):
-        super(Classifier, self).__init__()
+        super(CBIS_DDSM_classifier, self).__init__()
 
         weights = ResNet50_Weights.DEFAULT
         self.transform = transforms.Compose([transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])])
@@ -119,8 +135,9 @@ class Classifier(nn.Module):
         loss_meter = AverageMeter("Loss")
         train_bar = tqdm(dataloader, unit="batch", leave=False)
         for image_batch, label_batch in train_bar:
-            image_batch = self.transform(image_batch) ##
-            image_batch = self.transforms(image_batch)
+            image_batch = torch.stack([image_batch,image_batch,image_batch],1)
+            image_batch = self.transform(image_batch) 
+            image_batch = self.transforms(image_batch) 
             image_batch = image_batch.to(device)
             label_batch = label_batch.to(device)
             pred_batch = self.forward(image_batch)
@@ -151,7 +168,8 @@ class Classifier(nn.Module):
         labels = []
         with torch.no_grad():
             for image_batch, label_batch in dataloader:
-                image_batch = self.transform(image_batch)
+                image_batch = torch.stack([image_batch,image_batch,image_batch],1)
+                image_batch = self.transform(image_batch) 
                 image_batch = image_batch.to(device)
                 label_batch = label_batch.to(device)
                 pred_batch = self.forward(image_batch)
@@ -172,10 +190,10 @@ class Classifier(nn.Module):
         self,
         device: torch.device,
         train_loader: torch.utils.data.DataLoader,
-        #test_loader: torch.utils.data.DataLoader,
+        test_loader: torch.utils.data.DataLoader,
         save_dir: pathlib.Path,
-        lr: int = 1e-04,   #1e-04 => Atingue os melhores resultados 1e-5 só apresenta uma ligeira melhoria
-        n_epoch: int = 100, #200
+        lr: int = 1e-04, 
+        n_epoch: int = 100,
         patience: int = 20,
         checkpoint_interval: int = -1,
     ) -> None:
@@ -202,7 +220,6 @@ class Classifier(nn.Module):
         best_test_loss = float("inf")
         for epoch in range(n_epoch):
             train_loss = self.train_epoch(device, train_loader, optim)
-            #test_loss, test_acc = self.test_epoch(device, test_loader)
             logging.info(
                 f"Epoch {epoch + 1}/{n_epoch} \t "
                 f"Train Loss {train_loss:.3g} \t "
@@ -212,7 +229,6 @@ class Classifier(nn.Module):
                 f"Epoch {epoch + 1}/{n_epoch} \t "
                 f"Train Loss {train_loss:.3g} \t "
             )
-
         self.cpu()
         self.save(save_dir)
         self.to(device)
@@ -230,16 +246,17 @@ class Classifier(nn.Module):
         path_to_model = directory + "/" + (self.name + ".pt")
         torch.save(self.state_dict(), path_to_model)
         
-def train_model(run, train_loader, test_loader):
-  if not os.path.exists("models/2class"):
-    os.makedirs("models/2class")
-  model = Classifier("model"+ str(run))
+    
+def train_model(run,train_loader, test_loader): #val_loader
+  if not os.path.exists("models"):
+    os.makedirs("models")
+  model = CBIS_DDSM_classifier("model"+ str(run))
   device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
-  model.fit(device,train_loader, "models/2class")
+  model.fit(device,train_loader, "models")
 
   #Get the best model from the previous run
-  model = Classifier("model"+ str(run))
-  model.load_state_dict(torch.load("models/2class/model"+ str(run) +".pt"), strict=False)
+  model = CBIS_DDSM_classifier("model"+ str(run))
+  model.load_state_dict(torch.load("models/model"+ str(run) +".pt"), strict=False)
   model.to(device)
   model.eval()
 
@@ -250,50 +267,52 @@ def train_model(run, train_loader, test_loader):
       f"Test Accuracy {test_acc * 100:.3g}% \t "
   )
   return(test_labels)
-
+                
 print("Images are being processed...")
-images = np.load('images_kid2.npy')
-label = np.load('labels_kid2.npy')
-classes = np.load('classes_kid2.npy')
+images = np.load('CBIS_DDSM.npy')
+label = np.load('CBIS_DDSM_labels.npy')
+classes = pd.read_csv('CBIS_DDSM_description_all_concepts.csv')
+classes2 = pd.read_csv('CBIS_DDSM_description_clean.csv')
+
 
 skf = StratifiedKFold(n_splits=10, shuffle=True, random_state=100)
-
+             
 run = 0
-images, classes_class, classes = pre_datasets(images,label,classes)
+images, classes_class, classes_density= pre_datasets(images,label, classes2)
 
-for train_index, test_index in skf.split(images, classes):
-  x_train, x_test = images[train_index], images[test_index]
-  y_train, y_test = classes_class[train_index], classes_class[test_index]
+for train_index, test_index in skf.split(images, classes_density):
+    x_train, x_test = images[train_index], images[test_index]
+    y_train, y_test = classes_class[train_index], classes_class[test_index]
 
-  tensor_x = torch.Tensor(np.moveaxis(x_train, -1, 1))
-  tensor_y = torch.Tensor(y_train).type(torch.LongTensor)
+    x_train, y_train = del0(x_train,y_train, classes_density[train_index])
 
-  my_dataset = TensorDataset(tensor_x,tensor_y) 
-  train_loader = DataLoader(my_dataset, batch_size=64,shuffle=True)
+    tensor_x = torch.Tensor(np.squeeze(x_train))
+    tensor_y = torch.Tensor(y_train).type(torch.LongTensor)
 
-  tensor_x = torch.Tensor(np.moveaxis(x_test, -1, 1))
-  tensor_y = torch.Tensor(y_test).type(torch.LongTensor)
+    my_dataset = TensorDataset(tensor_x,tensor_y) 
+    train_loader = DataLoader(my_dataset, batch_size=32,shuffle=True)
 
-  my_dataset = TensorDataset(tensor_x,tensor_y) 
-  test_loader = DataLoader(my_dataset, batch_size=1)
+    tensor_x = torch.Tensor(np.squeeze(x_test))
+    tensor_y = torch.Tensor(y_test).type(torch.LongTensor)
 
-  test_labels = train_model(run, train_loader, test_loader)
-  classes_test = y_test
+    my_dataset = TensorDataset(tensor_x,tensor_y) 
+    test_loader = DataLoader(my_dataset, batch_size=1)
 
-  conf_matrix = confusion_matrix(y_true=classes_test, y_pred=test_labels)
+    test_labels = train_model(run,train_loader, test_loader)
 
-  print('Accuracy: %.3f' % accuracy_score(classes_test, test_labels))
-  print('Precision: %.3f' % precision_score(classes_test, test_labels,average='macro'))
-  print('Recall: %.3f' % recall_score(classes_test, test_labels,average='macro')) 
-  print('F1_score: %.3f' % f1_score(classes_test, test_labels,average='macro'))
-  
-  write_line_to_csv(
-      "results/","Test_kid2_10k.csv",
+    conf_matrix = confusion_matrix(y_true=y_test, y_pred=test_labels)
+
+    print('Accuracy: %.3f' % accuracy_score(y_test, test_labels))
+    print('Precision: %.3f' % precision_score(y_test, test_labels,average='macro'))
+    print('Recall: %.3f' % recall_score(y_test, test_labels,average='macro')) 
+
+    run = run +1
+
+    write_line_to_csv(
+      "results/","Test_cbis_ddsm_10k.csv",
             {
-                "RUN": (run + 1),
-                "Accuracy": accuracy_score(classes_test, test_labels),
-                "Precision": precision_score(classes_test, test_labels,average='macro'),
-                "Recall": recall_score(classes_test, test_labels,average='macro'),
-                "F1_score": f1_score(classes_test, test_labels,average='macro')
-             })  
-  run = run + 1
+                "RUN": (run),
+                "Accuracy": accuracy_score(y_test, test_labels),
+                "Precision": precision_score(y_test, test_labels,average='macro'),
+                "Recall": recall_score(y_test, test_labels,average='macro')
+             })           

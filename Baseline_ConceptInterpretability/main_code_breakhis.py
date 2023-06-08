@@ -9,6 +9,7 @@ from sklearn.metrics import confusion_matrix, precision_score, recall_score, f1_
 import csv
 import pathlib
 from pathlib import Path
+import random
 import sys
 import shutil
 import torch
@@ -49,6 +50,7 @@ from utils.metrics import correlation_matrix
 
 RESULTS_BASE_PATH = "output/results/"
 MODELS_DIR = "output/models/"
+DATA_SPLIT = [0.7, 0, 0.3]  # Order: Train, Validation, Test. Values between 0 and 1.
 SOURCE = "breakhist"  
 
 def write_line_to_csv(dir_path, file, data_row):
@@ -117,7 +119,7 @@ class Classifier(nn.Module):
         super(Classifier, self).__init__()
 
         weights = ResNet50_Weights.DEFAULT
-        self.transform = transforms.Compose([transforms.Resize(128,antialias = True),transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])])
+        self.transform = transforms.Compose([transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])])
         self.transforms = transforms.Compose([transforms.RandomHorizontalFlip(), transforms.RandomRotation(180), transforms.RandomVerticalFlip()])
 
         self.resnet50 = resnet50(weights=ResNet50_Weights.IMAGENET1K_V2)
@@ -399,9 +401,11 @@ def train_model(run, train_loader, val_loader, test_loader):
 
 def concept_dataset(run,concept_name, np_images,label, train_slip, test_slip): 
 
-    images = np_images.copy()[get_run_shuffle(REPRODUCIBILITY_DIR, SOURCE, run)]
-    order = get_run_shuffle(REPRODUCIBILITY_DIR, SOURCE, run)
+    images = np_images.copy()
+    order = np.array(range(0,images.shape[0]])
+    random.shuffle(order)
     labels_save = [label[i] for i in order]
+    images = images[order]
     
     #Divide the dataset in 2 parts: positives and negatives
     pos=[]; neg=[]
@@ -436,7 +440,6 @@ def concept_dataset(run,concept_name, np_images,label, train_slip, test_slip):
     images_train = images[train]; images_test = images[test]
     labels_train = labels_y[train]; labels_test = labels_y[test]
     
-    #return(np.expand_dims(np.squeeze(images_train),axis=1), np.expand_dims(np.squeeze(images_test),axis=1), labels_train, labels_test)  
     return(images_train,images_test, labels_train, labels_test)
     
 def concept_accuracy(
@@ -474,9 +477,9 @@ def concept_accuracy(
             model, representation_dir, f"{concept_name}_train"
         )
 
-        transform = transforms.Compose([transforms.Resize(128,antialias = True),transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])])
+        transform = transforms.Compose([transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])])
 
-        X_train, X_test, y_train, y_test = concept_dataset(run,concept_name, images,label, 400, 50)
+        X_train, X_test, y_train, y_test = concept_dataset(run,concept_name, images,label, 400, 60)
 
         X_train = np.moveaxis(X_train, -1, 1)
         X_test = np.moveaxis(X_test, -1, 1)
@@ -599,7 +602,7 @@ def global_explanations(
     device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
 
     concept_names = ["A", "F", "TA","PT","DC", "LC", "MC","PC"]
-    transform = transforms.Compose([transforms.Resize(128,antialias = True),transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])])
+    transform = transforms.Compose([transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])])
 
     if not os.path.exists(save_dir):
         os.makedirs(save_dir)
@@ -618,7 +621,7 @@ def global_explanations(
     for concept_id in range(0,len(concept_names)):
         logging.info(f"Now fitting a CAR classifier for {concept_id}")
         print(f"Now fitting a CAR classifier for {concept_id}")
-        images_train, images_test, labels_train, labels_test = concept_dataset(run,concept_names[concept_id], images,label, 400, 50)
+        images_train, images_test, labels_train, labels_test = concept_dataset(run,concept_names[concept_id], images,label, 400, 60)
 
         images_train = np.moveaxis(images_train, -1, 1)
 
@@ -704,8 +707,6 @@ for run in range(0,30):  # Go until 30
   print('Accuracy: %.3f' % accuracy_score(classes_test, test_labels))
   print('Precision: %.3f' % precision_score(classes_test, test_labels))
   print('Recall: %.3f' % recall_score(classes_test, test_labels)) 
-  print('F1_score: %.3f' % f1_score(classes_test, test_labels))
-  print('ROC_AUC_score: %.3f' % roc_auc_score(classes_test, test_labels))
   
   write_line_to_csv(
       "results/","Test_BreaKHis.csv",
@@ -713,8 +714,7 @@ for run in range(0,30):  # Go until 30
                 "RUN": (run + 1),
                 "Accuracy": accuracy_score(classes_test, test_labels),
                 "Precision": precision_score(classes_test, test_labels,average='macro'),
-                "Recall": recall_score(classes_test, test_labels,average='macro'),
-                "F1_score": f1_score(classes_test, test_labels,average='macro')
+                "Recall": recall_score(classes_test, test_labels,average='macro')
              })  
 
   concept_accuracy(images,label,run,True,"results/breakhist" + str(run) + "/concept_accuracy","data/breakhist","models/ben_mal/","model" + str(run))

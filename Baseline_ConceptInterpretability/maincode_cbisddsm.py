@@ -51,7 +51,7 @@ from utils.metrics import correlation_matrix
 RESULTS_BASE_PATH = "output/results/"
 MODELS_DIR = "output/models/"
 DATA_SPLIT = [0.7, 0, 0.3]  # Order: Train, Validation, Test. Values between 0 and 1.
-SOURCE = "pad-ufes"  
+SOURCE = "CBIS_DDSM_100"  
 
 def write_line_to_csv(dir_path, file, data_row):
 
@@ -75,48 +75,60 @@ def write_line_to_csv(dir_path, file, data_row):
 
     file_csv.flush()
     file_csv.close()
-        
-def pre_datasets(run, np_images,label): 
+    
+def pre_datasets(run, np_images,label, classes): 
     images = np_images.copy()
     order = range(0,images.shape[0])
-    labels_save = [label[i] for i in order]
     
     train, test = train_test_split(order, test_size=DATA_SPLIT[2], shuffle=True)
     train, val = train_test_split(train, test_size=0.143, shuffle=True)
 
     images_train = images[train]; images_test = images[test]; images_val = images[val]
-    labels_save_test = [labels_save[i] for i in test]; labels_save_train = [labels_save[i] for i in train]; labels_save_val = [labels_save[i] for i in val]
+    labels_save_test = [label[i] for i in test]; labels_save_train = [label[i] for i in train]; labels_save_val = [label[i] for i in val]
 
     #The real classes must also be organized in the specific order
     classes_test = []
     for k in range(0,len(labels_save_test)):
-        if(labels_save_test[k].split("_")[1] == 'B'):
+        if(labels_save_test[k] in (classes[(classes['abnormality']=='calcification') & (classes['pathology']=='BENIGN')])['name'].values):
             classes_test.append(0)
-        elif(labels_save_test[k].split("_")[1] == 'M'):
+        elif(labels_save_test[k] in (classes[ (classes['abnormality']=='calcification') & (classes['pathology']=='MALIGNANT')])['name'].values):
+            classes_test.append(1)
+        elif(labels_save_test[k] in (classes[ (classes['abnormality']=='mass') & (classes['pathology']=='BENIGN')])['name'].values):
+            classes_test.append(0)
+        elif(labels_save_test[k] in (classes[ (classes['abnormality']=='mass') & (classes['pathology']=='MALIGNANT')])['name'].values):
             classes_test.append(1)
     classes_train = []
     for k in range(0,len(labels_save_train)):
-        if(labels_save_train[k].split("_")[1] == 'B'):
+        if(labels_save_train[k] in (classes[ (classes['abnormality']=='calcification') & (classes['pathology']=='BENIGN')])['name'].values):
             classes_train.append(0)
-        elif(labels_save_train[k].split("_")[1] == 'M'):
+        elif(labels_save_train[k] in (classes[ (classes['abnormality']=='calcification') & (classes['pathology']=='MALIGNANT')])['name'].values):
+            classes_train.append(1)
+        elif(labels_save_train[k] in (classes[ (classes['abnormality']=='mass') & (classes['pathology']=='BENIGN')])['name'].values):
+            classes_train.append(0)
+        elif(labels_save_train[k] in (classes[ (classes['abnormality']=='mass') & (classes['pathology']=='MALIGNANT')])['name'].values):
             classes_train.append(1)
     classes_val = []
     for k in range(0,len(labels_save_val)):
-        if(labels_save_val[k].split("_")[1] == 'B'):
+        if(labels_save_val[k] in (classes[ (classes['abnormality']=='calcification') & (classes['pathology']=='BENIGN')])['name'].values):
             classes_val.append(0)
-        elif(labels_save_val[k].split("_")[1] == 'M'):
+        elif(labels_save_val[k] in (classes[ (classes['abnormality']=='calcification') & (classes['pathology']=='MALIGNANT')])['name'].values):
             classes_val.append(1)
+        elif(labels_save_val[k] in (classes[ (classes['abnormality']=='mass') & (classes['pathology']=='BENIGN')])['name'].values):
+            classes_val.append(0)
+        elif(labels_save_val[k] in (classes[ (classes['abnormality']=='mass') & (classes['pathology']=='MALIGNANT')])['name'].values):
+            classes_val.append(1)
+    del images
     
     classes_train = np.array(classes_train); classes_test = np.array(classes_test); classes_val = np.array(classes_val)
     
     return(images_train, images_test, images_val, classes_train, classes_test, classes_val)  
-
+    
 from torchvision.models import resnet50, ResNet50_Weights
 
-class Classifier(nn.Module):
+class CBIS_DDSM_classifier(nn.Module):
     
     def __init__(self, name: str = "model"):
-        super(Classifier, self).__init__()
+        super(CBIS_DDSM_classifier, self).__init__()
 
         weights = ResNet50_Weights.DEFAULT
         self.transform = transforms.Compose([transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])])
@@ -173,8 +185,9 @@ class Classifier(nn.Module):
         loss_meter = AverageMeter("Loss")
         train_bar = tqdm(dataloader, unit="batch", leave=False)
         for image_batch, label_batch in train_bar:
+            image_batch = torch.stack([image_batch,image_batch,image_batch],1)
             image_batch = self.transform(image_batch) 
-            image_batch = self.transforms(image_batch)
+            image_batch = self.transforms(image_batch) 
             image_batch = image_batch.to(device)
             label_batch = label_batch.to(device)
             pred_batch = self.forward(image_batch)
@@ -204,7 +217,8 @@ class Classifier(nn.Module):
         test_acc = []
         with torch.no_grad():
             for image_batch, label_batch in dataloader:
-                image_batch = self.transform(image_batch)
+                image_batch = torch.stack([image_batch,image_batch,image_batch],1)
+                image_batch = self.transform(image_batch) 
                 image_batch = image_batch.to(device)
                 label_batch = label_batch.to(device)
                 pred_batch = self.forward(image_batch)
@@ -237,7 +251,8 @@ class Classifier(nn.Module):
         labels = []
         with torch.no_grad():
             for image_batch, label_batch in dataloader:
-                image_batch = self.transform(image_batch)
+                image_batch = torch.stack([image_batch,image_batch,image_batch],1)
+                image_batch = self.transform(image_batch) 
                 image_batch = image_batch.to(device)
                 label_batch = label_batch.to(device)
                 pred_batch = self.forward(image_batch)
@@ -260,8 +275,8 @@ class Classifier(nn.Module):
         train_loader: torch.utils.data.DataLoader,
         test_loader: torch.utils.data.DataLoader,
         save_dir: pathlib.Path,
-        lr: int = 1e-04,   #1e-04 => Atingue os melhores resultados 1e-5 só apresenta uma ligeira melhoria
-        n_epoch: int = 200, #200
+        lr: int = 1e-04, 
+        n_epoch: int = 200,
         patience: int = 20,
         checkpoint_interval: int = -1,
     ) -> None:
@@ -378,28 +393,8 @@ class Classifier(nn.Module):
             "Layer4": self.resnet50.layer4
         }
         
-def train_model(run, train_loader, val_loader, test_loader):
-  if not os.path.exists("models/pad-ufes"):
-    os.makedirs("models/pad-ufes")
-  model = Classifier("model"+ str(run))
-  device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
-  model.fit(device,train_loader, val_loader, "models/pad-ufes")
+def concept_dataset(run,concept_name, concept_value, np_images,label, classes, train_slip, test_slip): 
 
-  #Get the best model from the previous run
-  model = Classifier("model"+ str(run))
-  model.load_state_dict(torch.load("models/pad-ufes/model"+ str(run) +".pt"), strict=False)
-  model.to(device)
-  model.eval()
-
-  test_loss, test_acc, test_labels = model.test(device, test_loader)
-
-  print(
-      f"Test Loss {test_loss:.3g} \t"
-      f"Test Accuracy {test_acc * 100:.3g}% \t "
-  )
-  return(test_labels)
-
-def concept_dataset(run,concept_name, np_images,label,classes, train_slip, test_slip): 
     images = np_images.copy()
     order = np.array(range(0,images.shape[0]])
     random.shuffle(order)
@@ -409,8 +404,8 @@ def concept_dataset(run,concept_name, np_images,label,classes, train_slip, test_
     #Divide the dataset in 2 parts: positives and negatives
     pos=[]; neg=[]
     labels_y = []
-    for k in range(0,len(label)):
-        if(labels_save[k] in (classes[ (classes[concept_name]==True)])['img_id'].values):
+    for k in range(0,len(labels_save)):
+        if(labels_save[k] in (classes[ (classes[concept_name]==1)])['name'].values):
             pos.append(k)
             labels_y.append(1)
         else:
@@ -439,19 +434,24 @@ def concept_dataset(run,concept_name, np_images,label,classes, train_slip, test_
     images_train = images[train]; images_test = images[test]
     labels_train = labels_y[train]; labels_test = labels_y[test]
     
-    return(images_train,images_test, labels_train, labels_test)
+    return(np.expand_dims(np.squeeze(images_train),axis=1), np.expand_dims(np.squeeze(images_test),axis=1), labels_train, labels_test)  
+    
     
 def concept_accuracy(
-    images,label, run, classes,
+    images,label, classes, run,
     plot: bool,
-    save_dir: Path = "results/pad-ufes/concept_accuracy",
-    data_dir: Path = "data/pad-ufes",
+    save_dir: Path = "results/cbis_ddsm/concept_accuracy",
+    data_dir: Path = "data/cbis_ddsm",
     model_dir: Path = "models/",
-    model_name: str = "model1l",
+    model_name: str = "model_",
 ) -> None:
     device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
 
-    concept_names = ['ACK','BCC','skin_cancer_history_true','skin_cancer_history_false','cancer_history_true','cancer_history_false','fitspatrick_2','fitspatrick_3', 'region_face', 'region_forearm', 'region_chest', 'itch_true', 'itch_false', 'grew_true', 'grew_false', 'bleed_true', 'bleed_false']
+    concept_names = ["density_1","density_2","density_3","density_4",
+                     "birads_0","birads_2","birads_3","birads_4","birads_5",
+                     "mass_shape_IRREGULAR","mass_shape_LOBULATED","mass_shape_OVAL",
+                     "mass_margins_CIRCUMSCRIBED","mass_margins_ILL_DEFINED","mass_margins_SPICULATED",
+                     "calc_type_PLEOMORPHIC","calc_distribution_CLUSTERED"]
 
     representation_dir = save_dir + "/" + f"{model_name}_representations"
     if not os.path.exists(representation_dir):
@@ -459,7 +459,7 @@ def concept_accuracy(
     print("Starting Concept Accuracy")
 
     model_dir = model_dir #+ "/" +  model_name
-    model = Classifier(model_name)
+    model = CBIS_DDSM_classifier(model_name)
     model.load_state_dict(torch.load(model_dir + "/" + f"{model_name}.pt"), strict=False)
     model.to(device)
     model.eval()
@@ -475,27 +475,30 @@ def concept_accuracy(
         module_dic, handler_train_dic = register_hooks(
             model, representation_dir, f"{concept_name}_train"
         )
-
+        
         transform = transforms.Compose([transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])])
+        
+        X_train, X_test, y_train, y_test = concept_dataset(run,concept_name, concept_name, images,label, classes, 400, 60)
 
-        X_train, X_test, y_train, y_test = concept_dataset(run,concept_name, images,label,classes, 400, 60)
+        X_train = np.stack([X_train,X_train,X_train],1)
+        X_train = np.squeeze(X_train, 2)
 
-        X_train = np.moveaxis(X_train, -1, 1)
-        X_test = np.moveaxis(X_test, -1, 1)
+        X_test = np.stack([X_test,X_test,X_test],1)
+        X_test = np.squeeze(X_test, 2)
 
-        model(transform(torch.from_numpy(X_train).type(torch.FloatTensor)).to(device))
+        model(transform(torch.from_numpy(X_train)).to(device))
         remove_all_hooks(handler_train_dic)
         # Save representations for testing concept examples and then remove the hooks
         module_dic, handler_test_dic = register_hooks(
             model, representation_dir, f"{concept_name}_test"
         )
-        model(transform(torch.from_numpy(X_test).type(torch.FloatTensor)).to(device))
+        model(transform(torch.from_numpy(X_test)).to(device))
         remove_all_hooks(handler_test_dic)
-        
         # Create concept classifiers, fit them and test them for each representation space
         for module_name in module_dic:
             logging.info(f"Fitting concept classifiers for {module_name}")
             print(f"Fitting concept classifiers for {module_name}")
+
             car = CAR(device)
             cav = CAV(device)
             hook_name = f"{concept_name}_train_{module_name}"
@@ -531,7 +534,8 @@ def concept_accuracy(
         shutil.rmtree(representation_dir)
     if plot:
         plot_concept_accuracy(save_dir, None, "cbis_ddsm" + str(run))
-
+        
+  
 def wrap_labels(ax, width, break_long_words=False, do_y: bool = False) -> None:
     """
     Break labels in several lines in a figure
@@ -588,27 +592,30 @@ def plot_new_global_explanation(results_dir: Path, dataset_name: str, concept_ca
       plt.tight_layout()
       plt.savefig(results_dir + "/" + f"{dataset_name}_global_class{class_idx}.pdf")
       plt.close()
-      
+
 def global_explanations(
-    images,label, run, classes,classes2,
+    images,label, classes, classes2, run,
     batch_size: int,
     plot: bool,
-    save_dir: Path = "results/breakhist/global_explanations",
-    data_dir: Path = "data/breakhist",
+    save_dir: Path = "results/cbis_ddsm/global_explanations",
+    data_dir: Path = "data/cbis_ddsm",
     model_dir: Path = "models/",
     model_name: str = "model1",
 ) -> None:
     device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
 
-    concept_names = ['ACK','BCC','skin_cancer_history_true','skin_cancer_history_false','cancer_history_true','cancer_history_false','fitspatrick_2','fitspatrick_3', 'region_face', 'region_forearm', 'region_chest', 'itch_true', 'itch_false', 'grew_true', 'grew_false', 'bleed_true', 'bleed_false']
-
+    concept_names = [ "density_1","density_2","density_3","density_4",
+                     "birads_0","birads_2","birads_3","birads_4","birads_5",
+                     "mass_shape_IRREGULAR","mass_shape_LOBULATED","mass_shape_OVAL",
+                     "mass_margins_CIRCUMSCRIBED","mass_margins_ILL_DEFINED","mass_margins_SPICULATED",
+                     "calc_type_PLEOMORPHIC","calc_distribution_CLUSTERED"]
     transform = transforms.Compose([transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])])
 
     if not os.path.exists(save_dir):
         os.makedirs(save_dir)
     print("Starting Global Explanations")
     model_dir = model_dir 
-    model = Classifier(model_name)
+    model = CBIS_DDSM_classifier(model_name)
     model.load_state_dict(torch.load(model_dir + "/" + f"{model_name}.pt"), strict=False)
     model.to(device)
     model.eval()
@@ -620,12 +627,13 @@ def global_explanations(
 
     for concept_id in range(0,len(concept_names)):
         logging.info(f"Now fitting a CAR classifier for {concept_id}")
-        print(f"Now fitting a CAR classifier for {concept_id}")
-        images_train, images_test, labels_train, labels_test = concept_dataset(run,concept_names[concept_id], images,label,classes2, 400, 60)
+        print(f"Now fitting a CAR classifier for {concept_names[concept_id]}")
+        images_train, images_test, labels_train, labels_test = concept_dataset(run,concept_names[concept_id],concept_names[concept_id], images,label, classes, 400, 60)
 
-        images_train = np.moveaxis(images_train, -1, 1)
+        images_train = np.stack([images_train,images_train,images_train],1)
+        images_train = np.squeeze(images_train, 2)
 
-        X_train = transform(torch.from_numpy(images_train).type(torch.FloatTensor)).to(device)
+        X_train = transform(torch.from_numpy(images_train)).to(device)
         H_train = model.input_to_representation(X_train).detach().cpu().numpy()
         car = car_classifiers[concept_id]
         car.fit(H_train, labels_train)
@@ -633,9 +641,9 @@ def global_explanations(
         cav = cav_classifiers[concept_id]
         cav.fit(H_train, labels_train)
 
-    a, images_test, b, c, classes_test, d = pre_datasets(run,images,label,classes)
+    a, images_test, b, c, classes_test, d = pre_datasets_aug(run,images,label, classes2)
     
-    tensor_x_test = torch.Tensor(np.moveaxis(images_test, -1, 1)) 
+    tensor_x_test = torch.Tensor(np.squeeze(images_test)) 
     tensor_y_test = torch.Tensor(classes_test).type(torch.LongTensor)
 
     my_dataset_test = TensorDataset(tensor_x_test,tensor_y_test) 
@@ -645,6 +653,7 @@ def global_explanations(
     results_data = []
     for X_test, Y_test in tqdm(test_loader, unit="batch", leave=False):
         X_test = transform(X_test).to(device)
+        X_test = torch.stack([X_test,X_test,X_test],1)
         H_test = model.input_to_representation(X_test).detach().cpu().numpy()
         pred_concepts = [car.predict(H_test) for car in car_classifiers]
         cav_preds = [
@@ -670,55 +679,66 @@ def global_explanations(
     )
     logging.info(f"Saving results in {save_dir}")
     results_df.to_csv(save_dir + "/" + "metrics.csv", index=False)
-    
+
     if plot:
         plot_new_global_explanation(save_dir, "cbis_ddsm", None)
-
+                
 print("Images are being processed...")
-images = np.load('images_pad-ufes.npy')
-label = np.load('labels_pad-ufes.npy')
-classes = pd.read_csv('metadata.csv')
-classes2 = pd.read_csv('data_pad-ufes.csv')
-  
-for run in range(0,30): 
+images = np.load('CBIS_DDSM.npy')
+label = np.load('CBIS_DDSM_labels.npy')
+classes = pd.read_csv('CBIS_DDSM_description_all_concepts.csv')
+classes2 = pd.read_csv('CBIS_DDSM_description_clean.csv')
 
-  images_train, images_test, images_val, classes_train, classes_test, classes_val = pre_datasets(run, np_images,label)
+for run in range(0,30):  # Go until 30
+  print("Run: " + str(run + 1) + "...")
 
-  tensor_x = torch.Tensor(np.moveaxis(images_train, -1, 1))
+  images_train, images_test, images_val, classes_train, classes_test, classes_val = pre_datasets(run,images,label, classes2)
+    
+  tensor_x = torch.Tensor(np.squeeze(images_train))
   tensor_y = torch.Tensor(classes_train).type(torch.LongTensor)
 
   my_dataset = TensorDataset(tensor_x,tensor_y) 
-  train_loader = DataLoader(my_dataset, batch_size=64,shuffle=True)
+  train_loader = DataLoader(my_dataset, batch_size=128,shuffle=True)
 
-  tensor_x_val = torch.Tensor(np.moveaxis(images_val, -1, 1)) 
+  tensor_x_val = torch.Tensor(np.squeeze(images_val)) 
   tensor_y_val = torch.Tensor(classes_val).type(torch.LongTensor)
 
   my_dataset_val = TensorDataset(tensor_x_val,tensor_y_val) 
-  val_loader = DataLoader(my_dataset_val, batch_size=64,shuffle=True)
+  val_loader = DataLoader(my_dataset_val, batch_size=128,shuffle=True)
 
-  tensor_x = torch.Tensor(np.moveaxis(images_test, -1, 1))
+  if not os.path.exists("models/cbisddsm"):
+      os.makedirs("models/cbisddsm")
+  model = CBIS_DDSM_classifier("model"+ str(run))
+  device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
+  model.fit(device,train_loader, val_loader, "models/cbisddsm")
+
+  tensor_x = torch.Tensor(np.squeeze(images_test))
   tensor_y = torch.Tensor(classes_test).type(torch.LongTensor)
 
   my_dataset = TensorDataset(tensor_x,tensor_y) 
   test_loader = DataLoader(my_dataset, batch_size=1)
 
-  test_labels = train_model(run, train_loader, val_loader, test_loader)
+  #Get the best model from the previous run
+  model = CBIS_DDSM_classifier("model"+ str(run))
+  model.load_state_dict(torch.load("models/cbisddsm/model"+ str(run) +".pt"), strict=False)
+  model.to(device)
+  model.eval()
 
-  conf_matrix = confusion_matrix(y_true=classes_test, y_pred=test_labels)
+  test_loss, test_acc, test_labels = model.test(device, test_loader)
 
   print('Accuracy: %.3f' % accuracy_score(classes_test, test_labels))
   print('Precision: %.3f' % precision_score(classes_test, test_labels))
   print('Recall: %.3f' % recall_score(classes_test, test_labels)) 
-  
+
   write_line_to_csv(
-      "results/","Test_PAD-UFES.csv",
+      "results/","Test_CBIS_DDSM.csv",
             {
                 "RUN": (run + 1),
                 "Accuracy": accuracy_score(classes_test, test_labels),
-                "Precision": precision_score(classes_test, test_labels,average='macro'),
-                "Recall": recall_score(classes_test, test_labels,average='macro')
+                "Precision": precision_score(classes_test, test_labels),
+                "Recall": recall_score(classes_test, test_labels)
              })  
+  concept_accuracy(images,label,classes,run,True,"results/cbis_ddsm" + str(run) + "/concept_accuracy","data/cbis_ddsm","models/cbisddsm/","model" + str(run))
 
-  concept_accuracy(images,label,run,classes2,True,"results/pad-ufes" + str(run) + "/concept_accuracy","data/pad-ufes","models/2class/","model" + str(run))
-  global_explanations(images,label,run,classes,classes2,1,True,"results/pad-ufes" + str(run) + "/global_explanation","data/pad-ufes","models/2class/","model" + str(run))
-  
+  global_explanations(images,label,classes, classes2,run,1,True,"results/cbis_ddsm" + str(run) + "/global_explanation","data/cbis_ddsm","models/cbisddsm/","model" + str(run))
+    

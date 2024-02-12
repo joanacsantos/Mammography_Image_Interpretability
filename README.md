@@ -4,7 +4,7 @@
 This repository presents the implementation code of the article "An Interpretable Human-In-The-Loop Process to Improve Medical Image Classification".
 
 <p align="center">
- <img src="https://github.com/joanacsantos/Mammography_Image_Interpretability/assets/57224933/27b91a90-3d07-4726-ae70-164ff666caf1" alt="method3" width="400">
+ <img src="https://github.com/joanacsantos/Mammography_Image_Interpretability/assets/57224933/f043dd9a-adfc-4ed2-aebc-889fec5b6004" alt="method3" width="600">
 </p>
 
 The code of the article is divided into 3 main parts:
